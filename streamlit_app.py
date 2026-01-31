@@ -2,11 +2,26 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 
-# --- 1. GLOBAL SETTINGS & FOREX ---
-st.set_page_config(page_title="Windfall Architect: Kenya Edition", page_icon="🇰🇪", layout="wide")
+# --- 1. PAGE CONFIG & DYNAMIC LOGO ---
+st.set_page_config(page_title="Windfall Architect", page_icon="💰", layout="wide")
 
-# Mock exchange rates (You can update these manually or I can show you how to pull live ones)
-# Rates: 1 USD = 129 KES, 1 EUR = 140 KES, 1 GBP = 165 KES (Approximate)
+# Custom CSS for the Pastel Blue/Green Dynamic Logo
+st.markdown("""
+    <style>
+    .logo-text {
+        font-weight: 800;
+        font-size: 50px !important;
+        background: -webkit-linear-gradient(#7ed9ad, #80ced7);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        font-family: 'Helvetica Neue', sans-serif;
+    }
+    </style>
+    <p class="logo-text">Windfall</p>
+    """, unsafe_allow_input=True)
+
+# --- 2. FOREX DATA ---
+# Approx rates for KES base
 EXCHANGE_RATES = {
     "KES (Shillings)": 1.0,
     "USD (Dollars)": 0.0078, 
@@ -14,75 +29,89 @@ EXCHANGE_RATES = {
     "GBP (Pounds)": 0.0061
 }
 
-st.title("🇰🇪 Windfall Architect: Global Compounder")
-
-# --- 2. SIDEBAR: CURRENCY & INPUTS ---
-st.sidebar.header("🌍 Currency Settings")
+# --- 3. SIDEBAR CONTROLS ---
+st.sidebar.header("🌍 Global Settings")
 selected_currency = st.sidebar.selectbox("Display Currency", list(EXCHANGE_RATES.keys()))
 rate = EXCHANGE_RATES[selected_currency]
 symbol = selected_currency.split(" ")[0]
 
-st.sidebar.header("🚀 Initial Capital")
-# We input in KES because that's where your MMF likely sits
-initial_kes = st.sidebar.number_input("Starting Amount (KSh)", min_value=0.0, value=1000000.0, step=50000.0)
+st.sidebar.divider()
 
-st.sidebar.header("📈 MMF & Taxes")
+st.sidebar.header("🚀 Initial Capital")
+initial_kes = st.sidebar.number_input("Starting Amount (KSh)", min_value=0.0, value=1000000.0, step=10000.0)
+
+st.sidebar.header("📈 Growth & Tax")
 mmf_rate = st.sidebar.slider("Annual Yield (%)", 0.0, 20.0, 15.0) / 100
-tax_rate = st.sidebar.slider("Withholding Tax (%)", 0, 30, 15) / 100
+tax_rate = st.sidebar.slider("Tax on Interest (%)", 0, 30, 15) / 100
 
 st.sidebar.header("📉 Monthly Outflow")
 monthly_spend_kes = st.sidebar.number_input("Monthly Expenses (KSh)", value=50000.0)
 
-# --- 3. COMPOUNDING ENGINE ---
+st.sidebar.header("🎁 Additional Windfalls")
+add_bonus = st.sidebar.checkbox("Expect a future bonus?")
+bonus_amount_kes = st.sidebar.number_input("Bonus Amount (KSh)", value=200000.0) if add_bonus else 0
+bonus_month = st.sidebar.number_input("Month Received (1-120)", min_value=1, value=12) if add_bonus else 0
+
+# --- 4. THE ENGINE ---
 monthly_yield = mmf_rate / 12
 balance = initial_kes
 data = []
 total_tax_kes = 0
+total_interest_kes = 0
 
-for month in range(121):
-    # Convert current KES balance to selected currency for the chart
-    display_balance = balance * rate
-    data.append({"Month": month, "Balance": max(0, display_balance)})
+for month in range(121): # 10 Year Horizon
+    # Convert to selected currency for data storage
+    data.append({"Month": month, "Balance": max(0, balance * rate)})
     
     if balance <= 0:
         break
+    
+    # Apply Bonus
+    if add_bonus and month == bonus_month:
+        balance += bonus_amount_kes
         
-    # Compounding Calculation (In KES)
+    # Compounding Logic
     gross_interest = balance * monthly_yield
     tax_hit = gross_interest * tax_rate
     net_interest = gross_interest - tax_hit
+    
     total_tax_kes += tax_hit
+    total_interest_kes += gross_interest
     
     balance = (balance + net_interest) - monthly_spend_kes
 
 df = pd.DataFrame(data)
 
-# --- 4. DASHBOARD ---
-# Convert metrics to selected currency
-final_bal = df['Balance'].iloc[-1]
-tax_display = total_tax_kes * rate
+# --- 5. DASHBOARD ---
+c1, c2, c3 = st.columns(3)
+with c1:
+    st.metric("Financial Runway", f"{len(df)-1} Months")
+with c2:
+    st.metric(f"Interest Earned ({symbol})", f"{total_interest_kes * rate:,.2f}")
+with c3:
+    st.metric(f"Final Balance ({symbol})", f"{df['Balance'].iloc[-1]:,.2f}")
 
-col1, col2, col3 = st.columns(3)
-col1.metric("Runway", f"{len(df)-1} Months")
-col2.metric(f"Total Tax ({symbol})", f"{tax_display:,.2f}")
-col3.metric(f"Final Value ({symbol})", f"{final_bal:,.2f}")
-
-# --- 5. CHART ---
+# Plotly Chart
 fig = go.Figure()
 fig.add_trace(go.Scatter(
     x=df['Month'], 
     y=df['Balance'], 
     fill='tozeroy', 
-    line=dict(color='#00ffcc', width=3),
-    name=f"Wealth in {symbol}"
+    line=dict(color='#7ed9ad', width=4),
+    name="Wealth Path"
 ))
 
 fig.update_layout(
-    template="plotly_dark", 
-    title=f"Compounding Wealth Projection ({selected_currency})",
-    xaxis_title="Months",
-    yaxis_title=f"Amount ({symbol})"
+    template="plotly_dark",
+    title=f"Wealth Growth Projection in {selected_currency}",
+    xaxis_title="Months from Now",
+    yaxis_title=f"Balance ({symbol})",
+    paper_bgcolor='rgba(0,0,0,0)',
+    plot_bgcolor='rgba(0,0,0,0)'
 )
 st.plotly_chart(fig, use_container_width=True)
 
-st.info(f"💡 Note: Rates used: 1 USD = {1/EXCHANGE_RATES['USD (Dollars) Aidan']:,.1f} KES")
+# Celebration
+if balance > initial_kes:
+    st.success("Your money is growing faster than you spend it! 🥂")
+    st.balloons()
